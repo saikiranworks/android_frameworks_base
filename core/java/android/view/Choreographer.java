@@ -1198,6 +1198,9 @@ public final class Choreographer {
                 Trace.traceBegin(Trace.TRACE_TAG_VIEW, message);
             }
 
+            if (frameIntervalNanos > 0 && frameIntervalNanos != mFrameIntervalNanos) {
+                mFrameIntervalNanos = frameIntervalNanos;
+            }
             AnimationUtils.lockAnimationClock(frameTimeNanos / TimeUtils.NANOS_PER_MS);
 
             mFrameInfo.markInputHandlingStart();
