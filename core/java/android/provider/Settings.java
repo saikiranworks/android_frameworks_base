@@ -7434,6 +7434,11 @@ public final class Settings {
         public static final String EDGE_LIGHT_STROKE_WIDTH = "edge_light_stroke_width";
 
         /**
+         * @hide
+         */
+        public static final String BACK_TO_APP_INDICATOR = "back_to_app_indicator";
+
+        /**
          * Edge light style
          * @hide
          */

@@ -458,6 +458,17 @@ public class TaskInfo {
     @Nullable
     public Rect topActivityMainWindowFrame;
 
+    /**
+     * @hide
+     */
+    @Nullable
+    public String launchedFromPackage;
+
+    /**
+     * @hide
+     */
+    public int launchedFromTaskId = INVALID_TASK_ID;
+
     TaskInfo() {
         // Do nothing
     }
@@ -542,6 +553,8 @@ public class TaskInfo {
                 : null;
         isAppBubble = other.isAppBubble;
         isInteractive = other.isInteractive;
+        launchedFromPackage = other.launchedFromPackage;
+        launchedFromTaskId = other.launchedFromTaskId;
     }
 
     /** @hide */
@@ -774,6 +787,8 @@ public class TaskInfo {
         isAppBubble = source.readBoolean();
         isInteractive = source.readBoolean();
         isTopAppLocked = source.readBoolean();
+        launchedFromPackage = source.readString8();
+        launchedFromTaskId = source.readInt();
     }
 
     /**
@@ -837,6 +852,8 @@ public class TaskInfo {
         dest.writeBoolean(isAppBubble);
         dest.writeBoolean(isInteractive);
         dest.writeBoolean(isTopAppLocked);
+        dest.writeString8(launchedFromPackage);
+        dest.writeInt(launchedFromTaskId);
     }
 
     @Override

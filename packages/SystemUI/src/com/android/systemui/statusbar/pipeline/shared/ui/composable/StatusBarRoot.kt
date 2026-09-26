@@ -31,6 +31,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -95,6 +96,7 @@ import com.android.systemui.res.R
 import com.android.systemui.scene.ui.view.WindowRootView
 import com.android.systemui.shade.ui.composable.VariableDayDate
 import com.android.systemui.statusbar.StatusBarAlwaysUseRegionSampling
+import com.android.systemui.statusbar.backtoapp.BackToAppChip
 import com.android.systemui.statusbar.chips.ui.compose.OngoingActivityChips
 import com.android.systemui.statusbar.core.NewStatusBarIcons
 import com.android.systemui.statusbar.core.StatusBarEventForwardingModernization
@@ -523,6 +525,12 @@ private fun addStartSideComposable(
                     )
                 }
                 val chipsVisibilityModel = statusBarViewModel.ongoingActivityChips
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                WithAdaptiveTint(
+                    isDarkProvider = { bounds -> statusBarViewModel.areaDark.isDarkTheme(bounds) }
+                ) { tint ->
+                    BackToAppChip(tint = tint)
+                }
                 if (chipsVisibilityModel.areChipsAllowed) {
                     OngoingActivityChips(
                         chips = chipsVisibilityModel.chips,
@@ -530,6 +538,7 @@ private fun addStartSideComposable(
                         onChipBoundsChanged = statusBarViewModel::onChipBoundsChanged,
                         modifier = Modifier.sysUiResTagContainer().widthIn(max = chipsMaxWidth),
                     )
+                }
                 }
             }
         }
