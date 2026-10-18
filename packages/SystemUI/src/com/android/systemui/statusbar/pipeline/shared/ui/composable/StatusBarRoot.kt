@@ -405,12 +405,15 @@ fun StatusBarRoot(
  * HomeStatusBarViewBinder). Only the label under the visible clock is shown: the binder toggles
  * each clock's visibility (position, clock auto-hide, denylist, HUN), and the label mirrors its
  * own clock. The start padding is snapshot state updated on layout, so it follows the clock-chip
- * padding applied later by HomeStatusBarViewBinder.applyClockChip.
+ * padding applied later by HomeStatusBarViewBinder.applyClockChip. For the right clock the
+ * stacked column is then moved out of the fixed-height system_icons row (see
+ * [moveRightClockColumnOutOfSystemIcons]), otherwise the label would be clipped there.
  */
 private fun stackBackToAppUnderClock(
     clockView: Clock,
     statusBarViewModel: HomeStatusBarViewModel,
     context: Context,
+    childGravity: Int = android.view.Gravity.START,
 ) {
     val parent = clockView.parent as? ViewGroup ?: return
     val index = parent.indexOfChild(clockView)
@@ -420,13 +423,10 @@ private fun stackBackToAppUnderClock(
     val column =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.START
+            gravity = android.view.Gravity.CENTER_VERTICAL or childGravity
             clipChildren = false
-            layoutParams =
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                )
+            clipToPadding = false
+            layoutParams = columnLayoutParams(clockParams)
         }
     parent.removeViewAt(index)
     parent.addView(column, index)
@@ -435,7 +435,10 @@ private fun stackBackToAppUnderClock(
     clockView.includeFontPadding = false
     column.addView(
         clockView,
-        LinearLayout.LayoutParams(clockParams.width, LinearLayout.LayoutParams.WRAP_CONTENT),
+        LinearLayout.LayoutParams(clockParams.width, LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply {
+                if (clockParams is LinearLayout.LayoutParams) gravity = clockParams.gravity
+            },
     )
     val labelView =
         ComposeView(context).apply {
@@ -455,12 +458,103 @@ private fun stackBackToAppUnderClock(
         ),
     )
     labelView.visibility = clockView.visibility
+    labelView.alpha = clockView.alpha
     val syncWithClock = {
         labelStart.value = clockView.paddingStart / density
-        labelView.visibility = clockView.visibility
+        // Defer the visibility change out of the layout pass: setting it here
+        // would call requestLayout() while a layout is already in progress.
+        val clockVisibility = clockView.visibility
+        labelView.post {
+            if (labelView.visibility != clockVisibility) {
+                labelView.visibility = clockVisibility
+            }
+        }
     }
     clockView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncWithClock() }
     column.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncWithClock() }
+    // The binder fades the clock via View.animate() (alpha to 0, then GONE in
+    // the end action). Mirror the alpha every frame so the label fades with
+    // the clock instead of staying opaque and then vanishing at once.
+    clockView.viewTreeObserver.addOnPreDrawListener {
+        if (labelView.alpha != clockView.alpha) labelView.alpha = clockView.alpha
+        true
+    }
+}
+
+/** Column params that keep the clock's original layout_gravity and margins. */
+private fun columnLayoutParams(clockParams: ViewGroup.LayoutParams): ViewGroup.LayoutParams {
+    val width = ViewGroup.LayoutParams.WRAP_CONTENT
+    val height = ViewGroup.LayoutParams.MATCH_PARENT
+    return when (clockParams) {
+        is LinearLayout.LayoutParams ->
+            LinearLayout.LayoutParams(width, height).apply {
+                gravity = clockParams.gravity
+                setMargins(
+                    clockParams.leftMargin,
+                    clockParams.topMargin,
+                    clockParams.rightMargin,
+                    clockParams.bottomMargin,
+                )
+                marginStart = clockParams.marginStart
+                marginEnd = clockParams.marginEnd
+            }
+        is FrameLayout.LayoutParams ->
+            FrameLayout.LayoutParams(width, height).apply {
+                gravity = clockParams.gravity
+                setMargins(
+                    clockParams.leftMargin,
+                    clockParams.topMargin,
+                    clockParams.rightMargin,
+                    clockParams.bottomMargin,
+                )
+                marginStart = clockParams.marginStart
+                marginEnd = clockParams.marginEnd
+            }
+        is ViewGroup.MarginLayoutParams ->
+            ViewGroup.MarginLayoutParams(width, height).apply {
+                setMargins(
+                    clockParams.leftMargin,
+                    clockParams.topMargin,
+                    clockParams.rightMargin,
+                    clockParams.bottomMargin,
+                )
+                marginStart = clockParams.marginStart
+                marginEnd = clockParams.marginEnd
+            }
+        else -> ViewGroup.LayoutParams(width, height)
+    }
+}
+
+/**
+ * Moves the stacked right-clock column out of system_icons.
+ *
+ * system_icons is included at a fixed height of status_bar_icon_container_height
+ * (22sp) and clips its children, so a 14sp clock plus the ~12dp label cannot
+ * fit inside it: the label was clipped and the clock pushed off centre.
+ * status_bar_end_side_content is match_parent high and already has
+ * clipChildren=false, so the column gets the full status-bar height there,
+ * exactly like the left/center columns. It is inserted just after
+ * system_icons, preserving the clock's position at the end edge (after the
+ * status icons and battery), and its MATCH_PARENT height keeps the
+ * clock+label group centred the same way as without the label.
+ */
+private fun moveRightClockColumnOutOfSystemIcons(
+    phoneStatusBarView: PhoneStatusBarView,
+    rightClock: Clock,
+) {
+    val column = rightClock.parent as? ViewGroup ?: return
+    val oldParent = column.parent as? ViewGroup ?: return
+    val systemIcons = phoneStatusBarView.findViewById<ViewGroup>(R.id.system_icons) ?: return
+    val endSideContent =
+        phoneStatusBarView.findViewById<ViewGroup>(R.id.status_bar_end_side_content) ?: return
+    if (oldParent === endSideContent) return
+    oldParent.removeView(column)
+    column.clipChildren = false
+    column.clipToPadding = false
+    endSideContent.clipChildren = false
+    endSideContent.clipToPadding = false
+    val index = endSideContent.indexOfChild(systemIcons) + 1
+    endSideContent.addView(column, index.coerceIn(0, endSideContent.childCount))
 }
 
 private fun addStartSideComposable(
@@ -481,9 +575,24 @@ private fun addStartSideComposable(
     // crDroid can move the clock to the center or right view instead of R.id.clock;
     // stack a label under those too so it follows the active position.
     val centerClock: Clock? = phoneStatusBarView.findViewById(R.id.clock_center)
-    centerClock?.let { stackBackToAppUnderClock(it, statusBarViewModel, context) }
+    centerClock?.let {
+        stackBackToAppUnderClock(
+            it,
+            statusBarViewModel,
+            context,
+            childGravity = android.view.Gravity.CENTER_HORIZONTAL,
+        )
+    }
     val rightClock: Clock? = phoneStatusBarView.findViewById(R.id.clock_right)
-    rightClock?.let { stackBackToAppUnderClock(it, statusBarViewModel, context) }
+    rightClock?.let {
+        stackBackToAppUnderClock(
+            it,
+            statusBarViewModel,
+            context,
+            childGravity = android.view.Gravity.END,
+        )
+        moveRightClockColumnOutOfSystemIcons(phoneStatusBarView, it)
+    }
 
     val composeView =
         ComposeView(context).apply {
