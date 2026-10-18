@@ -91,14 +91,11 @@ class BackToAppTracker private constructor(context: Context) {
     }
 
     private fun readEnabled() {
-        // Default on: no crDroidSettings toggle exists for this key yet, so an
-        // off-by-default gate would make the feature unreachable. Users can still
-        // disable it with `settings put system back_to_app_indicator 0`.
         enabled =
             Settings.System.getIntForUser(
                 appContext.contentResolver,
                 Settings.System.BACK_TO_APP_INDICATOR,
-                1,
+                0,
                 UserHandle.USER_CURRENT,
             ) != 0
         refresh()
