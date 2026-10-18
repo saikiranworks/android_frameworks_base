@@ -1534,6 +1534,8 @@ public abstract class OomAdjuster {
         }
 
         if (!mProcsToOomAdj.isEmpty()) {
+            final ProcessRecordInternal homeProc = mGlobalState.getHomeProcess();
+            ProcessList.sHomePid = homeProc != null ? homeProc.getPid() : -1;
             mInjector.batchSetOomAdj(mProcsToOomAdj);
             mProcsToOomAdj.clear();
         }
