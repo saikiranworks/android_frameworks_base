@@ -30,6 +30,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -398,7 +399,14 @@ fun StatusBarRoot(
     }
 }
 
-/** Adds the composable chips shown on the start side of the status bar. */
+/**
+ * Stacks the way-back label under [clockView]. Called for every crDroid clock (left, center and
+ * right) so the label follows the active clock position (STATUS_BAR_CLOCK in
+ * HomeStatusBarViewBinder). Only the label under the visible clock is shown: the binder toggles
+ * each clock's visibility (position, clock auto-hide, denylist, HUN), and the label mirrors its
+ * own clock. The start padding is snapshot state updated on layout, so it follows the clock-chip
+ * padding applied later by HomeStatusBarViewBinder.applyClockChip.
+ */
 private fun stackBackToAppUnderClock(
     clockView: Clock,
     statusBarViewModel: HomeStatusBarViewModel,
@@ -407,6 +415,8 @@ private fun stackBackToAppUnderClock(
     val parent = clockView.parent as? ViewGroup ?: return
     val index = parent.indexOfChild(clockView)
     val clockParams = clockView.layoutParams
+    val density = context.resources.displayMetrics.density
+    val labelStart = mutableStateOf(clockView.paddingStart / density)
     val column =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -427,22 +437,30 @@ private fun stackBackToAppUnderClock(
         clockView,
         LinearLayout.LayoutParams(clockParams.width, LinearLayout.LayoutParams.WRAP_CONTENT),
     )
-    val labelStart = clockView.paddingStart / context.resources.displayMetrics.density
-    column.addView(
+    val labelView =
         ComposeView(context).apply {
             setContent {
                 WithAdaptiveTint(
                     isDarkProvider = { bounds -> statusBarViewModel.areaDark.isDarkTheme(bounds) }
                 ) { tint ->
-                    BackToAppLabel(tint = tint, startPadding = labelStart.dp)
+                    BackToAppLabel(tint = tint, startPadding = labelStart.value.dp)
                 }
             }
-        },
+        }
+    column.addView(
+        labelView,
         LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT,
         ),
     )
+    labelView.visibility = clockView.visibility
+    val syncWithClock = {
+        labelStart.value = clockView.paddingStart / density
+        labelView.visibility = clockView.visibility
+    }
+    clockView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncWithClock() }
+    column.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncWithClock() }
 }
 
 private fun addStartSideComposable(
@@ -460,6 +478,12 @@ private fun addStartSideComposable(
         phoneStatusBarView.requireViewById<View>(R.id.status_bar_start_side_container)
     val clockView = phoneStatusBarView.requireViewById<Clock>(R.id.clock)
     stackBackToAppUnderClock(clockView, statusBarViewModel, context)
+    // crDroid can move the clock to the center or right view instead of R.id.clock;
+    // stack a label under those too so it follows the active position.
+    val centerClock: Clock? = phoneStatusBarView.findViewById(R.id.clock_center)
+    centerClock?.let { stackBackToAppUnderClock(it, statusBarViewModel, context) }
+    val rightClock: Clock? = phoneStatusBarView.findViewById(R.id.clock_right)
+    rightClock?.let { stackBackToAppUnderClock(it, statusBarViewModel, context) }
 
     val composeView =
         ComposeView(context).apply {
@@ -498,24 +522,29 @@ private fun addStartSideComposable(
                             statusBarViewModel.areaDark.isDarkTheme(bounds)
                         }
                     ) { tint ->
-                        Clock(
-                            clockViewModel = checkNotNull(clockViewModel),
-                            textColor = tint,
-                            modifier =
-                                Modifier.padding(end = 2.dp)
-                                    .wrapContentSize()
-                                    .onGloballyPositioned { coordinates ->
-                                        val boundsInWindow = coordinates.boundsInWindow()
-                                        val bounds =
-                                            Rect(
-                                                boundsInWindow.left.toInt(),
-                                                boundsInWindow.top.toInt(),
-                                                boundsInWindow.right.toInt(),
-                                                boundsInWindow.bottom.toInt(),
-                                            )
-                                        statusBarBoundsViewModel.updateComposeClockBounds(bounds)
-                                    },
-                        )
+                        // The legacy clocks are GONE in this mode (their stacked labels
+                        // hide with them), so put the label under the Compose clock.
+                        Column {
+                            Clock(
+                                clockViewModel = checkNotNull(clockViewModel),
+                                textColor = tint,
+                                modifier =
+                                    Modifier.padding(end = 2.dp)
+                                        .wrapContentSize()
+                                        .onGloballyPositioned { coordinates ->
+                                            val boundsInWindow = coordinates.boundsInWindow()
+                                            val bounds =
+                                                Rect(
+                                                    boundsInWindow.left.toInt(),
+                                                    boundsInWindow.top.toInt(),
+                                                    boundsInWindow.right.toInt(),
+                                                    boundsInWindow.bottom.toInt(),
+                                                )
+                                            statusBarBoundsViewModel.updateComposeClockBounds(bounds)
+                                        },
+                            )
+                            BackToAppLabel(tint = tint, startPadding = 0.dp)
+                        }
                     }
                 }
 
