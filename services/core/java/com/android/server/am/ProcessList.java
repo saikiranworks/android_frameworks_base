@@ -1562,7 +1562,7 @@ public final class ProcessList extends ProcessListInternal
                     + " name=" + app.processName);
             return PROC_TYPE_TOP;
         }
-        if (curAdj == FOREGROUND_APP_ADJ + 1 && schedGroup == SCHED_GROUP_TOP_APP) {
+        if (schedGroup == SCHED_GROUP_TOP_APP_BOUND) {
             Slog.i(TAG, "LMKD proc type top_bound: pid=" + app.getPid() + " uid=" + app.uid
                     + " adj=" + curAdj + " schedGroup=" + schedGroup
                     + " name=" + app.processName);
