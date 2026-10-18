@@ -596,6 +596,12 @@ public abstract class OomAdjuster {
             ProcessList.setOomAdj(pid, uid, adj, forLmkdOnly);
         }
 
+        /** Sets the OOM adjustment score and lmkd process type for a single process. */
+        public void setOomAdj(int pid, int uid, @OomAdjust int adj, int procType,
+                boolean forLmkdOnly) {
+            ProcessList.setOomAdj(pid, uid, adj, procType, forLmkdOnly);
+        }
+
         /** Sets the priority of a specific thread. */
         public void setThreadPriority(int tid, int priority) {
             Process.setThreadPriority(tid, priority);
@@ -2315,8 +2321,15 @@ public abstract class OomAdjuster {
             state.setSetRawAdj(state.getCurRawAdj());
         }
 
-        if (state.getCurAdj() != state.getSetAdj()) {
-            mCallback.onOomAdjustChanged(state.getSetAdj(), state.getCurAdj(), state);
+        final ProcessRecordInternal homeProc = mGlobalState.getHomeProcess();
+        ProcessList.sHomePid = homeProc != null ? homeProc.getPid() : -1;
+        final int procType = ProcessList.getLmkProcType(state);
+        final boolean adjChanged = state.getCurAdj() != state.getSetAdj();
+        final boolean procTypeChanged = procType != state.getSetLmkProcType();
+        if (adjChanged || procTypeChanged) {
+            if (adjChanged) {
+                mCallback.onOomAdjustChanged(state.getSetAdj(), state.getCurAdj(), state);
+            }
             if (isBatchingOomAdj && mOomConstants.mEnableBatchingOomAdj) {
                 mProcsToOomAdj.add(state);
             } else {
@@ -2324,16 +2337,18 @@ public abstract class OomAdjuster {
                 if (state.isZramWrittenBack()) {
                     forLmkdOnly = true;
                 }
-                mInjector.setOomAdj(state.getPid(), state.uid, state.getCurAdj(), forLmkdOnly);
+                mInjector.setOomAdj(state.getPid(), state.uid, state.getCurAdj(), procType,
+                        forLmkdOnly);
             }
 
-            if (reportDebugMsgs) {
+            if (adjChanged && reportDebugMsgs) {
                 String msg = "Set " + state.getPid() + " " + state.processName + " adj "
                         + state.getCurAdj() + ": " + state.getAdjType();
                 reportOomAdjMessageLocked(TAG_OOM_ADJ, msg);
             }
             state.setSetAdj(state.getCurAdj());
-            if (uidRec != null) {
+            state.setSetLmkProcType(procType);
+            if (adjChanged && uidRec != null) {
                 uidRec.setProcAdjChanged(true);
             }
         }

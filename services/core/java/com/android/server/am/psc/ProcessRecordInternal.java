@@ -442,6 +442,13 @@ public abstract class ProcessRecordInternal {
     private @OomAdjust int mSetAdj = INVALID_ADJ;
 
     /**
+     * Last lmkd process type sent for this process (ProcessList.PROC_TYPE_*),
+     * or -1 if none has been sent yet.
+     */
+    @CompositeRWLock({"mServiceLock", "mProcLock"})
+    private int mSetLmkProcType = -1;
+
+    /**
      * The previously set raw OOM adjustment for this process.
      * This is only meaningful for a restarted process.
      */
@@ -953,6 +960,16 @@ public abstract class ProcessRecordInternal {
     @GuardedBy({"mServiceLock", "mProcLock"})
     void setSetAdj(@OomAdjust int setAdj) {
         mSetAdj = setAdj;
+    }
+
+    @GuardedBy({"mServiceLock", "mProcLock"})
+    void setSetLmkProcType(int setLmkProcType) {
+        mSetLmkProcType = setLmkProcType;
+    }
+
+    @GuardedBy(anyOf = {"mServiceLock", "mProcLock"})
+    public int getSetLmkProcType() {
+        return mSetLmkProcType;
     }
 
     /**
@@ -1600,6 +1617,7 @@ public abstract class ProcessRecordInternal {
         mForcingToImportant = null;
         mPrevSetRawAdj = mSetRawAdj;
         mCurRawAdj = mSetRawAdj = mCurAdj = mSetAdj = INVALID_ADJ;
+        mSetLmkProcType = -1;
         mCurCapability = mSetCapability = PROCESS_CAPABILITY_NONE;
         mCurSchedGroup = mSetSchedGroup = SCHED_GROUP_BACKGROUND;
         mCurProcState = mCurRawProcState = mSetProcState = PROCESS_STATE_NONEXISTENT;

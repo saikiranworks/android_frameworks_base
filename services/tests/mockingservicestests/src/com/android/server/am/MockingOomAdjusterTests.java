@@ -5288,6 +5288,12 @@ public class MockingOomAdjusterTests {
         }
 
         @Override
+        public void setOomAdj(int pid, int uid, @OomAdjust int adj, int procType,
+                boolean forLmkdOnly) {
+            setOomAdj(pid, uid, adj, forLmkdOnly);
+        }
+
+        @Override
         public void setThreadPriority(int tid, int priority) {
             // do nothing
         }

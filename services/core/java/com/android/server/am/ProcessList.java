@@ -1529,6 +1529,10 @@ public final class ProcessList extends ProcessListInternal
     }
 
     public static void setOomAdj(int pid, int uid, int amt, boolean forLmkdOnly) {
+        setOomAdj(pid, uid, amt, PROC_TYPE_APP, forLmkdOnly);
+    }
+
+    public static void setOomAdj(int pid, int uid, int amt, int procType, boolean forLmkdOnly) {
         // This indicates that the process is not started yet and so no need to proceed further.
         if (pid <= 0) {
             return;
@@ -1542,7 +1546,7 @@ public final class ProcessList extends ProcessListInternal
         buf.putInt(pid);
         buf.putInt(uid);
         buf.putInt(amt);
-        buf.putInt(0); // PROC_TYPE_APP
+        buf.putInt(procType);
         buf.putInt(forLmkdOnly ? 1 : 0);
         writeLmkd(buf, null);
         long now = SystemClock.elapsedRealtime();
