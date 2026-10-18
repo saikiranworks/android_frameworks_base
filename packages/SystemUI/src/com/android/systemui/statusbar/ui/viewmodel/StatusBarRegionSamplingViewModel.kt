@@ -73,6 +73,7 @@ constructor(
     @Assisted("startSideIconView") private val startSideIconView: View,
     @Assisted("endSideContainerView") private val endSideContainerView: View,
     @Assisted("endSideIconView") private val endSideIconView: View,
+    @Assisted("endSideClockColumnView") private val endSideClockColumnView: View,
     @Assisted private val regionSamplingHelperFactory: RegionSamplingHelperFactory,
     private val statusBarRegionSamplingInteractor: StatusBarRegionSamplingInteractor,
     @Main private val mainExecutor: Executor,
@@ -133,6 +134,7 @@ constructor(
                                     getSamplingBounds(
                                         containerView = endSideContainerView,
                                         iconView = endSideIconView,
+                                        extraIconView = endSideClockColumnView,
                                     ),
                                 appearanceRegion =
                                     getAppearanceRegionBounds(containerView = endSideContainerView),
@@ -327,9 +329,19 @@ constructor(
      * The following region was chosen to also avoid possible influence by the screen magnification
      * border which is a bright colored outline around the edges of the entire screen.
      */
-    private fun getSamplingBounds(containerView: View, iconView: View): Rect {
+    private fun getSamplingBounds(
+        containerView: View,
+        iconView: View,
+        extraIconView: View? = null,
+    ): Rect {
         val result = containerView.boundsOnScreen
         result.top = iconView.boundsOnScreen.bottom
+        // The way-back right-clock column may be relocated outside system_icons;
+        // exclude its content from sampling too by starting below whichever
+        // of the two extends lower.
+        if (extraIconView != null) {
+            result.top = maxOf(result.top, extraIconView.boundsOnScreen.bottom)
+        }
         return result
     }
 
@@ -365,6 +377,9 @@ constructor(
          * @param endSideIconView any view that is an icon within the end side container. This is
          *   only used for determining the y-coordinate of icons, so any icon in the container is
          *   sufficient.
+         * @param endSideClockColumnView the stacked right-clock column, which may be relocated
+         *   outside [endSideIconView] while the way-back feature is enabled. Its bottom edge is
+         *   also excluded from sampling.
          * @param regionSamplingHelperFactory factory to create the [RegionSamplingHelper]s used in
          *   this view model. The default param value creates real [RegionSamplingHelper]s; this
          *   factory is only needed so that tests can provide mock [RegionSamplingHelper]s.
@@ -376,6 +391,7 @@ constructor(
             @Assisted("startSideIconView") startSideIconView: View,
             @Assisted("endSideContainerView") endSideContainerView: View,
             @Assisted("endSideIconView") endSideIconView: View,
+            @Assisted("endSideClockColumnView") endSideClockColumnView: View,
             @Assisted
             regionSamplingHelperFactory: RegionSamplingHelperFactory =
                 DefaultRegionSamplingHelperFactory(),

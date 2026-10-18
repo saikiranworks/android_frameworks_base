@@ -30,6 +30,7 @@ var Kosmos.mockStatusBarStartSideContainerView by Kosmos.Fixture { mock<View>() 
 var Kosmos.mockStatusBarStartSideIconView by Kosmos.Fixture { mock<View>() }
 var Kosmos.mockStatusBarEndSideContainerView by Kosmos.Fixture { mock<View>() }
 var Kosmos.mockStatusBarEndSideIconView by Kosmos.Fixture { mock<View>() }
+var Kosmos.mockStatusBarEndSideClockColumnView by Kosmos.Fixture { mock<View>() }
 val Kosmos.mockRegionSamplingHelperFactory by Kosmos.Fixture { mock<RegionSamplingHelperFactory>() }
 
 val Kosmos.statusBarRegionSamplingViewModel by
@@ -41,6 +42,7 @@ val Kosmos.statusBarRegionSamplingViewModel by
             startSideIconView = mockStatusBarStartSideIconView,
             endSideContainerView = mockStatusBarEndSideContainerView,
             endSideIconView = mockStatusBarEndSideIconView,
+            endSideClockColumnView = mockStatusBarEndSideClockColumnView,
             regionSamplingHelperFactory = mockRegionSamplingHelperFactory,
         )
     }
@@ -55,6 +57,7 @@ val Kosmos.statusBarRegionSamplingViewModelFactory: StatusBarRegionSamplingViewM
                 startSideIconView: View,
                 endSideContainerView: View,
                 endSideIconView: View,
+                endSideClockColumnView: View,
                 regionSamplingHelperFactory: RegionSamplingHelperFactory,
             ): StatusBarRegionSamplingViewModel {
                 return StatusBarRegionSamplingViewModel(
@@ -64,6 +67,7 @@ val Kosmos.statusBarRegionSamplingViewModelFactory: StatusBarRegionSamplingViewM
                     startSideIconView = startSideIconView,
                     endSideContainerView = endSideContainerView,
                     endSideIconView = endSideIconView,
+                    endSideClockColumnView = endSideClockColumnView,
                     regionSamplingHelperFactory = regionSamplingHelperFactory,
                     statusBarRegionSamplingInteractor = fakeStatusBarRegionSamplingInteractor,
                     mainExecutor = fakeExecutor,

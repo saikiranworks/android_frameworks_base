@@ -245,6 +245,28 @@ private constructor(
             endSideContainer.setOnTouchListener(createMouseClickListener { animateExpandQs() })
         }
 
+        // The way-back right-clock column (clockRight's parent) may be relocated
+        // outside system_icons while that feature is enabled. Give it the same
+        // hover highlight and expand-QS listeners as system_icons so the clock
+        // keeps them in either location. Attaching unconditionally is safe:
+        // while the column is inside system_icons its listener consumes the
+        // event, so the shade action still fires only once.
+        val rightClockColumn = clockRight.parent as? View
+        if (rightClockColumn != null && rightClockColumn !== endSideContainer) {
+            rightClockColumn.setOnHoverListener(
+                statusOverlayHoverListenerFactory.createDarkAwareListener(rightClockColumn)
+            )
+            if (statusBarTapToExpandShadeEnabled()) {
+                rightClockColumn.setOnTouchListener(
+                    createClickListener(rightClockColumn) { animateExpandQs() }
+                )
+            } else {
+                rightClockColumn.setOnTouchListener(
+                    createMouseClickListener { animateExpandQs() }
+                )
+            }
+        }
+
         startSideContainer = mView.requireViewById(R.id.status_bar_start_side_content)
         updateStartSideContainerHoverListener()
         if (statusBarTapToExpandShadeEnabled()) {

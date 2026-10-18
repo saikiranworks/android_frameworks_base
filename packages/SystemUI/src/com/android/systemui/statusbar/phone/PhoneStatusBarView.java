@@ -439,10 +439,26 @@ public class PhoneStatusBarView extends FrameLayout implements Callbacks {
         findViewById(R.id.notification_lights_out)
                 .setPaddingRelative(0, statusBarPaddingStart + mStatusBarPaddingStart, 0, 0);
 
+        // While the way-back feature relocates the right-clock column out of
+        // system_icons, the icons end padding lives on that column instead (it
+        // must remain after the clock, not between the battery and the clock).
+        int iconsPaddingEnd = getResources().getDimensionPixelSize(
+                R.dimen.status_bar_icons_padding_end);
+        View clockRight = findViewById(R.id.clock_right);
+        View rightClockLayout = findViewById(R.id.right_clock_layout);
+        boolean rightClockRelocated = clockRight != null
+                && clockRight.getParent() instanceof View
+                && ((View) clockRight.getParent()).getParent() != null
+                && ((View) clockRight.getParent()).getParent() != rightClockLayout;
+        if (clockRight != null && clockRight.getParent() instanceof View) {
+            View column = (View) clockRight.getParent();
+            column.setPaddingRelative(column.getPaddingStart(), column.getPaddingTop(),
+                    rightClockRelocated ? iconsPaddingEnd : 0, column.getPaddingBottom());
+        }
         findViewById(R.id.system_icons).setPaddingRelative(
                 getResources().getDimensionPixelSize(R.dimen.status_bar_icons_padding_start),
                 getResources().getDimensionPixelSize(R.dimen.status_bar_icons_padding_top),
-                getResources().getDimensionPixelSize(R.dimen.status_bar_icons_padding_end),
+                rightClockRelocated ? 0 : iconsPaddingEnd,
                 getResources().getDimensionPixelSize(R.dimen.status_bar_icons_padding_bottom)
         );
     }

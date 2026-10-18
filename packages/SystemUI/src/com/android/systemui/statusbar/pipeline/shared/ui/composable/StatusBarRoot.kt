@@ -17,11 +17,17 @@
 package com.android.systemui.statusbar.pipeline.shared.ui.composable
 
 import android.content.Context
+import android.database.ContentObserver
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
+import android.os.UserHandle
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.flags.Flags as ViewFlags
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -406,8 +412,9 @@ fun StatusBarRoot(
  * each clock's visibility (position, clock auto-hide, denylist, HUN), and the label mirrors its
  * own clock. The start padding is snapshot state updated on layout, so it follows the clock-chip
  * padding applied later by HomeStatusBarViewBinder.applyClockChip. For the right clock the
- * stacked column is then moved out of the fixed-height system_icons row (see
- * [moveRightClockColumnOutOfSystemIcons]), otherwise the label would be clipped there.
+ * stacked column is moved out of the fixed-height system_icons row only while the feature is
+ * enabled (see [moveRightClockColumnOutOfSystemIcons]), otherwise the label would be clipped
+ * there; with the feature off it stays inside system_icons, preserving the original layout.
  */
 private fun stackBackToAppUnderClock(
     clockView: Clock,
@@ -475,10 +482,33 @@ private fun stackBackToAppUnderClock(
     // The binder fades the clock via View.animate() (alpha to 0, then GONE in
     // the end action). Mirror the alpha every frame so the label fades with
     // the clock instead of staying opaque and then vanishing at once.
-    clockView.viewTreeObserver.addOnPreDrawListener {
-        if (labelView.alpha != clockView.alpha) labelView.alpha = clockView.alpha
-        true
-    }
+    // Register on attach (not on the pre-attach floating observer) and remove
+    // on detach, so the mirroring survives the status bar window being
+    // recreated and re-attached.
+    val preDrawListener =
+        ViewTreeObserver.OnPreDrawListener {
+            if (labelView.alpha != clockView.alpha) labelView.alpha = clockView.alpha
+            true
+        }
+    var preDrawRegistered = false
+    val attachListener =
+        object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                if (!preDrawRegistered) {
+                    v.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+                    preDrawRegistered = true
+                }
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                if (preDrawRegistered && v.viewTreeObserver.isAlive) {
+                    v.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+                }
+                preDrawRegistered = false
+            }
+        }
+    clockView.addOnAttachStateChangeListener(attachListener)
+    if (clockView.isAttachedToWindow) attachListener.onViewAttachedToWindow(clockView)
 }
 
 /** Column params that keep the clock's original layout_gravity and margins. */
@@ -555,6 +585,110 @@ private fun moveRightClockColumnOutOfSystemIcons(
     endSideContent.clipToPadding = false
     val index = endSideContent.indexOfChild(systemIcons) + 1
     endSideContent.addView(column, index.coerceIn(0, endSideContent.childCount))
+    // Wrap the clock+label height so the column's bounds describe its content
+    // (region sampling excludes everything above the column's bottom edge).
+    column.layoutParams =
+        column.layoutParams.apply { height = ViewGroup.LayoutParams.WRAP_CONTENT }
+    // Transfer the system_icons end padding onto the column: it originally sat
+    // after the clock, and must stay after it rather than between the battery
+    // and the relocated clock. PhoneStatusBarView.updatePaddings keeps this in
+    // sync on configuration changes.
+    val padEnd =
+        phoneStatusBarView.resources.getDimensionPixelSize(R.dimen.status_bar_icons_padding_end)
+    systemIcons.setPaddingRelative(
+        systemIcons.paddingStart,
+        systemIcons.paddingTop,
+        0,
+        systemIcons.paddingBottom,
+    )
+    column.setPaddingRelative(
+        column.paddingStart,
+        column.paddingTop,
+        padEnd,
+        column.paddingBottom,
+    )
+}
+
+/** Undoes [moveRightClockColumnOutOfSystemIcons], restoring the original layout. */
+private fun moveRightClockColumnBackIntoSystemIcons(
+    phoneStatusBarView: PhoneStatusBarView,
+    rightClock: Clock,
+) {
+    val column = rightClock.parent as? ViewGroup ?: return
+    val oldParent = column.parent as? ViewGroup ?: return
+    val systemIcons = phoneStatusBarView.findViewById<ViewGroup>(R.id.system_icons) ?: return
+    val rightClockLayout =
+        phoneStatusBarView.findViewById<ViewGroup>(R.id.right_clock_layout) ?: return
+    if (oldParent === rightClockLayout) return
+    oldParent.removeView(column)
+    column.setPaddingRelative(column.paddingStart, column.paddingTop, 0, column.paddingBottom)
+    val padEnd =
+        phoneStatusBarView.resources.getDimensionPixelSize(R.dimen.status_bar_icons_padding_end)
+    systemIcons.setPaddingRelative(
+        systemIcons.paddingStart,
+        systemIcons.paddingTop,
+        padEnd,
+        systemIcons.paddingBottom,
+    )
+    rightClockLayout.addView(column)
+    column.layoutParams =
+        column.layoutParams.apply { height = ViewGroup.LayoutParams.MATCH_PARENT }
+}
+
+private fun isBackToAppEnabled(context: Context): Boolean =
+    Settings.System.getIntForUser(
+        context.contentResolver,
+        Settings.System.BACK_TO_APP_INDICATOR,
+        0,
+        UserHandle.USER_CURRENT,
+    ) != 0
+
+private fun applyRightClockRelocation(
+    phoneStatusBarView: PhoneStatusBarView,
+    rightClock: Clock,
+    context: Context,
+) {
+    if (isBackToAppEnabled(context)) {
+        moveRightClockColumnOutOfSystemIcons(phoneStatusBarView, rightClock)
+    } else {
+        moveRightClockColumnBackIntoSystemIcons(phoneStatusBarView, rightClock)
+    }
+}
+
+/**
+ * Relocates the right-clock column only while the way-back feature is enabled, and restores the
+ * original (byte-for-byte crDroid) layout when it is turned off. The tracker observes the same
+ * setting for the label itself; this observer only moves the view hierarchy.
+ */
+private fun observeBackToAppEnabledForRightClock(
+    phoneStatusBarView: PhoneStatusBarView,
+    rightClock: Clock,
+    context: Context,
+) {
+    applyRightClockRelocation(phoneStatusBarView, rightClock, context)
+    val observer =
+        object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                applyRightClockRelocation(phoneStatusBarView, rightClock, context)
+            }
+        }
+    phoneStatusBarView.addOnAttachStateChangeListener(
+        object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                context.contentResolver.registerContentObserver(
+                    Settings.System.getUriFor(Settings.System.BACK_TO_APP_INDICATOR),
+                    false,
+                    observer,
+                    UserHandle.USER_ALL,
+                )
+                applyRightClockRelocation(phoneStatusBarView, rightClock, context)
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                context.contentResolver.unregisterContentObserver(observer)
+            }
+        }
+    )
 }
 
 private fun addStartSideComposable(
@@ -591,7 +725,10 @@ private fun addStartSideComposable(
             context,
             childGravity = android.view.Gravity.END,
         )
-        moveRightClockColumnOutOfSystemIcons(phoneStatusBarView, it)
+        // Only relocate while the feature is on; with it off the column stays
+        // inside system_icons, preserving crDroid's original layout, hover /
+        // touch listeners, region sampling and end padding.
+        observeBackToAppEnabledForRightClock(phoneStatusBarView, it, context)
     }
 
     val composeView =
@@ -895,6 +1032,13 @@ private fun bindRegionSamplingViewModel(
                     endSideContainerView =
                         phoneStatusBarView.requireViewById(R.id.status_bar_end_side_container),
                     endSideIconView = phoneStatusBarView.requireViewById(R.id.system_icons),
+                    // The stacked right-clock column: while relocated it sits
+                    // outside system_icons, so sampling must also exclude the
+                    // area above its bottom edge (see ViewModel).
+                    endSideClockColumnView =
+                        (phoneStatusBarView.findViewById<Clock>(R.id.clock_right)?.parent
+                            as? View)
+                            ?: phoneStatusBarView.requireViewById(R.id.system_icons),
                 )
             },
         ) {
