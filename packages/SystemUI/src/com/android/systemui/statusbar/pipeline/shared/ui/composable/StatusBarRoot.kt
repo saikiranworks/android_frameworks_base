@@ -16,7 +16,10 @@
 
 package com.android.systemui.statusbar.pipeline.shared.ui.composable
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.database.ContentObserver
 import android.graphics.Rect
 import android.os.Handler
@@ -621,6 +624,12 @@ private fun moveRightClockColumnBackIntoSystemIcons(
         phoneStatusBarView.findViewById<ViewGroup>(R.id.right_clock_layout) ?: return
     if (oldParent === rightClockLayout) return
     oldParent.removeView(column)
+    // Restore the end-side container's XML clip state altered by the move out
+    // (clipChildren=false in XML, clipToPadding default true).
+    val endSideContent =
+        phoneStatusBarView.findViewById<ViewGroup>(R.id.status_bar_end_side_content)
+    endSideContent?.clipToPadding = true
+    endSideContent?.clipChildren = false
     column.setPaddingRelative(column.paddingStart, column.paddingTop, 0, column.paddingBottom)
     val padEnd =
         phoneStatusBarView.resources.getDimensionPixelSize(R.dimen.status_bar_icons_padding_end)
@@ -672,6 +681,16 @@ private fun observeBackToAppEnabledForRightClock(
                 applyRightClockRelocation(phoneStatusBarView, rightClock, context)
             }
         }
+    // isBackToAppEnabled reads USER_CURRENT, so re-apply on user switch:
+    // the USER_ALL value observer only fires when the value itself changes.
+    val userSwitchedReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context, intent: Intent) {
+                if (intent.action == Intent.ACTION_USER_SWITCHED) {
+                    applyRightClockRelocation(phoneStatusBarView, rightClock, context)
+                }
+            }
+        }
     phoneStatusBarView.addOnAttachStateChangeListener(
         object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
@@ -681,11 +700,17 @@ private fun observeBackToAppEnabledForRightClock(
                     observer,
                     UserHandle.USER_ALL,
                 )
+                context.registerReceiver(
+                    userSwitchedReceiver,
+                    IntentFilter(Intent.ACTION_USER_SWITCHED),
+                    Context.RECEIVER_NOT_EXPORTED,
+                )
                 applyRightClockRelocation(phoneStatusBarView, rightClock, context)
             }
 
             override fun onViewDetachedFromWindow(v: View) {
                 context.contentResolver.unregisterContentObserver(observer)
+                runCatching { context.unregisterReceiver(userSwitchedReceiver) }
             }
         }
     )

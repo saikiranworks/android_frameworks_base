@@ -446,14 +446,24 @@ public class PhoneStatusBarView extends FrameLayout implements Callbacks {
                 R.dimen.status_bar_icons_padding_end);
         View clockRight = findViewById(R.id.clock_right);
         View rightClockLayout = findViewById(R.id.right_clock_layout);
-        boolean rightClockRelocated = clockRight != null
-                && clockRight.getParent() instanceof View
-                && ((View) clockRight.getParent()).getParent() != null
-                && ((View) clockRight.getParent()).getParent() != rightClockLayout;
-        if (clockRight != null && clockRight.getParent() instanceof View) {
-            View column = (View) clockRight.getParent();
+        // The column is clockRight's parent after stacking. It is relocated
+        // only when it sits outside right_clock_layout (inside end-side
+        // content); before stacking clockRight's parent is right_clock_layout
+        // itself, and after stacking the column's parent is right_clock_layout.
+        View column = clockRight != null && clockRight.getParent() instanceof View
+                ? (View) clockRight.getParent() : null;
+        boolean rightClockRelocated = column != null && column != rightClockLayout
+                && column.getParent() != null && column.getParent() != rightClockLayout;
+        if (column != null && column != rightClockLayout) {
             column.setPaddingRelative(column.getPaddingStart(), column.getPaddingTop(),
                     rightClockRelocated ? iconsPaddingEnd : 0, column.getPaddingBottom());
+        }
+        if (rightClockLayout != null) {
+            // XML paddingEnd is 0; clear any stale value set by an earlier
+            // mis-detected relocation so it cannot double the end padding.
+            rightClockLayout.setPaddingRelative(rightClockLayout.getPaddingStart(),
+                    rightClockLayout.getPaddingTop(), 0,
+                    rightClockLayout.getPaddingBottom());
         }
         findViewById(R.id.system_icons).setPaddingRelative(
                 getResources().getDimensionPixelSize(R.dimen.status_bar_icons_padding_start),

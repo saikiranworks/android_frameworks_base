@@ -97,6 +97,7 @@ private constructor(
     private lateinit var clockRight: Clock
     private lateinit var startSideContainer: View
     private lateinit var endSideContainer: View
+    private var rightClockColumn: View? = null
 
     private val shadeInvocationSplitRatio: Float =
         resources.getFloat(R.dimen.config_invocationGestureSplitRatio)
@@ -231,6 +232,19 @@ private constructor(
         mView.setExtraStatusBarPaddingDp(extraStartDp, extraTopDp, extraEndDp)
     }
 
+    /** True only while [view] sits outside system_icons/right_clock_layout. */
+    private fun isRightClockColumnRelocated(view: View): Boolean {
+        if (view.parent == null) return false
+        var parent = view.parent as? View
+        while (parent != null) {
+            if (parent.id == R.id.system_icons || parent.id == R.id.right_clock_layout) {
+                return false
+            }
+            parent = parent.parent as? View
+        }
+        return true
+    }
+
     private fun addCursorSupportToIconContainers() {
         endSideContainer = mView.requireViewById(R.id.system_icons)
         endSideContainer.setOnHoverListener(
@@ -248,22 +262,27 @@ private constructor(
         // The way-back right-clock column (clockRight's parent) may be relocated
         // outside system_icons while that feature is enabled. Give it the same
         // hover highlight and expand-QS listeners as system_icons so the clock
-        // keeps them in either location. Attaching unconditionally is safe:
-        // while the column is inside system_icons its listener consumes the
-        // event, so the shade action still fires only once.
-        val rightClockColumn = clockRight.parent as? View
-        if (rightClockColumn != null && rightClockColumn !== endSideContainer) {
-            rightClockColumn.setOnHoverListener(
-                statusOverlayHoverListenerFactory.createDarkAwareListener(rightClockColumn)
-            )
-            if (statusBarTapToExpandShadeEnabled()) {
-                rightClockColumn.setOnTouchListener(
-                    createClickListener(rightClockColumn) { animateExpandQs() }
-                )
-            } else {
-                rightClockColumn.setOnTouchListener(
+        // keeps them after relocation. The wrappers only delegate while the
+        // column is relocated: while it stays inside system_icons they return
+        // false, so hover/touch fall through to system_icons and crDroid's
+        // group highlight and tap handling are unchanged (feature off).
+        val column = clockRight.parent as? View
+        if (column != null && column !== endSideContainer) {
+            rightClockColumn = column
+            val hoverListener =
+                statusOverlayHoverListenerFactory.createDarkAwareListener(column)
+            column.setOnHoverListener { v, event ->
+                if (!isRightClockColumnRelocated(v)) false
+                else hoverListener?.onHover(v, event) ?: false
+            }
+            val touchListener =
+                if (statusBarTapToExpandShadeEnabled()) {
+                    createClickListener(column) { animateExpandQs() }
+                } else {
                     createMouseClickListener { animateExpandQs() }
-                )
+                }
+            column.setOnTouchListener { v, event ->
+                if (!isRightClockColumnRelocated(v)) false else touchListener.onTouch(v, event)
             }
         }
 
@@ -309,6 +328,9 @@ private constructor(
         removeDarkReceivers()
         startSideContainer.setOnHoverListener(null)
         endSideContainer.setOnHoverListener(null)
+        rightClockColumn?.setOnHoverListener(null)
+        rightClockColumn?.setOnTouchListener(null)
+        rightClockColumn = null
         progressProvider?.setReadyToHandleTransition(false)
         configurationController.removeCallback(configurationListener)
     }
